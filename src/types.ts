@@ -1,4 +1,5 @@
 export type FuelType = 'Nafta' | 'Diésel' | 'GNC' | 'Híbrido' | 'Eléctrico';
+export type TransmissionType = 'Manual' | 'Automática' | 'CVT' | 'Semiautomática';
 
 export interface Vehicle {
   id: string;
@@ -8,11 +9,15 @@ export interface Vehicle {
   version: string;
   year: number;
   engine: string;
+  displacement?: string;
   fuelType: FuelType;
+  transmission?: TransmissionType;
   licensePlate: string;
+  vin?: string;
   currentMileage: number;
   acquisitionDate: string;
   photoUrl?: string;
+  notes?: string;
   isMain?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -44,11 +49,17 @@ export type MaintenanceType =
   | 'Balanceo'
   | 'Refrigerante'
   | 'Líquido de frenos'
+  | 'Líquido de transmisión'
   | 'Correa de distribución'
   | 'Correa auxiliar'
+  | 'Tensores'
   | 'Suspensión'
+  | 'Dirección'
   | 'Amortiguadores'
+  | 'Luces'
+  | 'Escobillas'
   | 'Aire acondicionado'
+  | 'Sistema de refrigeración'
   | 'Service general'
   | 'VTV/RTO'
   | 'Seguro'
@@ -59,6 +70,7 @@ export interface MaintenanceItem {
   userId: string;
   vehicleId: string;
   type: MaintenanceType;
+  customType?: string;
   date: string;
   mileage: number;
   cost: number;
@@ -66,9 +78,12 @@ export interface MaintenanceItem {
   description?: string;
   notes?: string;
   receiptUrl?: string;
+  intervalKm?: number;
+  intervalMonths?: number;
   nextMileageDue?: number;
   nextDateDue?: string;
   isCompleted: boolean;
+  isSafetyComponent?: boolean;
   createdAt: string;
 }
 
@@ -93,6 +108,7 @@ export interface Expense {
   amount: number;
   mileage?: number;
   description: string;
+  workshop?: string;
   createdAt: string;
 }
 
@@ -170,4 +186,43 @@ export interface PlanLimits {
   backupEnabled: boolean;
 }
 
-export type OverallVehicleStatus = 'ok' | 'upcoming' | 'overdue';
+// 5 URGENCY LEVELS (Core Feature)
+export type UrgencyLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface UrgencyInfo {
+  level: UrgencyLevel;
+  label: 'INFORMATIVO' | 'PREVENTIVO' | 'IMPORTANTE' | 'URGENTE' | 'CRÍTICO';
+  badgeBg: string;
+  textColor: string;
+  borderColor: string;
+  glowColor: string;
+  iconName: string;
+  actionText: string;
+  shortDescription: string;
+}
+
+export interface PreventiveRecommendation {
+  id: string;
+  vehicleId: string;
+  title: string;
+  category: MaintenanceType | 'Documento' | 'General';
+  reason: string;
+  recommendedKmInterval?: number;
+  recommendedMonthInterval?: number;
+  nextMileageDue?: number;
+  nextDateDue?: string;
+  remainingKm?: number;
+  remainingDays?: number;
+  urgency: UrgencyLevel;
+  urgencyInfo: UrgencyInfo;
+  isSafetyComponent: boolean;
+  status: 'pending' | 'completed' | 'dismissed';
+  createdAt: string;
+  lastCheckedDate: string;
+  notes?: string;
+  maintenanceItemId?: string;
+  documentId?: string;
+}
+
+export type OverallVehicleStatus = 'ok' | 'upcoming' | 'attention' | 'overdue';
+

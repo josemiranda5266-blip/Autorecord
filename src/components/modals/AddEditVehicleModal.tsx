@@ -23,8 +23,11 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
   const [version, setVersion] = useState(initialData?.version || '');
   const [year, setYear] = useState(initialData?.year ? String(initialData.year) : '2018');
   const [engine, setEngine] = useState(initialData?.engine || '');
+  const [displacement, setDisplacement] = useState(initialData?.displacement || '');
   const [fuelType, setFuelType] = useState<FuelType>(initialData?.fuelType || 'Nafta');
+  const [transmission, setTransmission] = useState(initialData?.transmission || 'Manual');
   const [licensePlate, setLicensePlate] = useState(initialData?.licensePlate || '');
+  const [vin, setVin] = useState(initialData?.vin || '');
   const [currentMileage, setCurrentMileage] = useState(
     initialData?.currentMileage ? String(initialData.currentMileage) : ''
   );
@@ -32,6 +35,7 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
     initialData?.acquisitionDate || new Date().toISOString().split('T')[0]
   );
   const [photoUrl, setPhotoUrl] = useState(initialData?.photoUrl || '');
+  const [notes, setNotes] = useState(initialData?.notes || '');
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,11 +63,15 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
           version,
           year: yearNum,
           engine,
+          displacement,
           fuelType,
+          transmission,
           licensePlate: licensePlate.toUpperCase(),
+          vin,
           currentMileage: mileageNum,
           acquisitionDate,
           photoUrl: photoUrl || undefined,
+          notes,
         });
       } else {
         await addVehicle({
@@ -72,11 +80,15 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
           version: version || 'Base',
           year: yearNum,
           engine: engine || '1.6 16V',
+          displacement: displacement || '1600 cc',
           fuelType,
+          transmission: transmission || 'Manual',
           licensePlate: licensePlate.toUpperCase(),
+          vin,
           currentMileage: mileageNum,
           acquisitionDate,
           photoUrl: photoUrl || undefined,
+          notes,
           isMain: true,
         });
       }
@@ -206,6 +218,37 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Cilindrada
+              </label>
+              <input
+                type="text"
+                value={displacement}
+                onChange={(e) => setDisplacement(e.target.value)}
+                placeholder="Ej: 1598 cc / 1.6L"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Transmisión
+              </label>
+              <select
+                value={transmission}
+                onChange={(e) => setTransmission(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 font-medium"
+              >
+                <option value="Manual">Manual</option>
+                <option value="Automática">Automática</option>
+                <option value="CVT">CVT</option>
+                <option value="Semiautomática">Semiautomática</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                 Patente / Dominio
               </label>
               <input
@@ -216,6 +259,19 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 uppercase font-mono tracking-wider font-semibold text-slate-900"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              VIN / Número de Chasis (Opcional)
+            </label>
+            <input
+              type="text"
+              value={vin}
+              onChange={(e) => setVin(e.target.value)}
+              placeholder="Ej: 8A1K4M11223344556"
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 font-mono text-xs uppercase"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -255,6 +311,19 @@ export const AddEditVehicleModal: React.FC<AddEditVehicleModalProps> = ({
               value={photoUrl}
               onChange={(e) => setPhotoUrl(e.target.value)}
               placeholder="https://..."
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Observaciones / Notas
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notas generales sobre el estado, equipamiento o particularidades..."
+              rows={2}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
