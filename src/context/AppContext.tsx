@@ -179,16 +179,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser(syncedProfile || userProfile);
         setIsDemoMode(false);
 
-        // Check for local data migration
+        // Check for local data migration (skip demo data)
         try {
           const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
           if (saved) {
             const parsed: StoredData = JSON.parse(saved);
             if (
-              parsed.vehicles.length > 0 ||
-              parsed.maintenances.length > 0 ||
-              parsed.expenses.length > 0 ||
-              (parsed.reminders && parsed.reminders.length > 0)
+              !parsed.isDemoMode &&
+              (parsed.vehicles.length > 0 ||
+                parsed.maintenances.length > 0 ||
+                parsed.expenses.length > 0 ||
+                (parsed.reminders && parsed.reminders.length > 0))
             ) {
               await migrationService.migrateLocalDataToFirestore({
                 vehicles: parsed.vehicles,
@@ -341,16 +342,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       }
     } else {
-      // Local fallback
-      const newUser: UserProfile = {
-        id: 'usr_' + Date.now(),
-        email,
-        displayName: email.split('@')[0],
-        plan: userPlan,
-        createdAt: new Date().toISOString(),
-      };
-      setUser(newUser);
-      setIsDemoMode(false);
+      throw new Error('Firebase Auth no está configurado. Usá el modo Demo para probar la aplicación.');
     }
   };
 
@@ -370,16 +362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       }
     } else {
-      // Local fallback
-      const newUser: UserProfile = {
-        id: 'usr_' + Date.now(),
-        email,
-        displayName: name || email.split('@')[0],
-        plan: 'free',
-        createdAt: new Date().toISOString(),
-      };
-      setUser(newUser);
-      setIsDemoMode(false);
+      throw new Error('Firebase Auth no está configurado. Usá el modo Demo para probar la aplicación.');
     }
   };
 
@@ -427,7 +410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (db && user && !isDemoMode) {
       await vehicleService.addVehicle(newVehicleData);
     } else {
-      setVehicles((prev) => [...prev, { ...newVehicleData, userId: user?.id || '' }]);
+      setVehicles((prev) => [...prev, { ...newVehicleData, userId: DEMO_USER_ID }]);
     }
     setActiveVehicleId(id);
     return id;
@@ -489,7 +472,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await mileageService.addMileageLog(newLogData);
       await vehicleService.updateVehicle(vehicleId, { currentMileage: newMileage });
     } else {
-      setMileageLogs((prev) => [{ ...newLogData, userId: user?.id || '' }, ...prev]);
+      setMileageLogs((prev) => [{ ...newLogData, userId: DEMO_USER_ID }, ...prev]);
       setVehicles((prev) =>
         prev.map((v) =>
           v.id === vehicleId
@@ -523,7 +506,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (db && user && !isDemoMode) {
       await maintenanceService.addMaintenance(newMaintData);
     } else {
-      setMaintenances((prev) => [{ ...newMaintData, userId: user?.id || '' }, ...prev]);
+      setMaintenances((prev) => [{ ...newMaintData, userId: DEMO_USER_ID }, ...prev]);
     }
   };
 
@@ -574,7 +557,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (db && user && !isDemoMode) {
       await expenseService.addExpense(newExpData);
     } else {
-      setExpenses((prev) => [{ ...newExpData, userId: user?.id || '' }, ...prev]);
+      setExpenses((prev) => [{ ...newExpData, userId: DEMO_USER_ID }, ...prev]);
     }
   };
 
@@ -609,7 +592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (db && user && !isDemoMode) {
       await documentService.addDocument(newDocData);
     } else {
-      setDocuments((prev) => [{ ...newDocData, userId: user?.id || '' }, ...prev]);
+      setDocuments((prev) => [{ ...newDocData, userId: DEMO_USER_ID }, ...prev]);
     }
   };
 
