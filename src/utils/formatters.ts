@@ -35,11 +35,17 @@ export function formatDateLong(dateString: string): string {
 
 export function getDaysDifference(targetDateString: string): number {
   if (!targetDateString) return 999;
-  const target = new Date(targetDateString);
+  let target: Date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(targetDateString)) {
+    const [y, m, d] = targetDateString.split('-').map(Number);
+    target = new Date(y, m - 1, d);
+  } else {
+    target = new Date(targetDateString);
+  }
+  if (isNaN(target.getTime())) return 999;
   const now = new Date();
-  // normalize time
   target.setHours(0, 0, 0, 0);
   now.setHours(0, 0, 0, 0);
   const diffTime = target.getTime() - now.getTime();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
