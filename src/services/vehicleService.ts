@@ -8,6 +8,7 @@ import {
   query,
   where,
   onSnapshot,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Vehicle } from '../types';
@@ -65,9 +66,10 @@ export const vehicleService = {
   async updateVehicle(vehicleId: string, updates: Partial<Vehicle>): Promise<void> {
     if (!db) return;
     try {
+      const { id, userId, createdAt, ...sanitizedUpdates } = updates as Vehicle;
       const docRef = doc(db, COLLECTION_NAME, vehicleId);
       await updateDoc(docRef, {
-        ...updates,
+        ...sanitizedUpdates,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -76,14 +78,83 @@ export const vehicleService = {
     }
   },
 
-  async deleteVehicle(vehicleId: string): Promise<void> {
+  async deleteVehicle(vehicleId: string, userId: string): Promise<void> {
     if (!db) return;
     try {
-      const docRef = doc(db, COLLECTION_NAME, vehicleId);
-      await deleteDoc(docRef);
+      const batchLimit = 400;
+      let currentBatch = writeBatch(db);
+      let batchOpCount = 0;
+
+      const commitIfNeeded = async (force = false) => {
+        if (batchOpCount > 0 && (batchOpCount >= batchLimit || force)) {
+          await currentBatch.commit();
+          currentBatch = writeBatch(db);
+          batchOpCount = 0;
+        }
+      };
+
+      // 1. Queue deletion of related maintenance items
+      const maintQ = query(
+        collection(db, 'maintenance'),
+        where('userId', '==', userId),
+        where('vehicleId', '==', vehicleId)
+      );
+      const maintSnap = await getDocs(maintQ);
+      for (const dSnap of maintSnap.docs) {
+        currentBatch.delete(dSnap.ref);
+        batchOpCount++;
+        await commitIfNeeded();
+      }
+
+      // 2. Queue deletion of related expenses
+      const expQ = query(
+        collection(db, 'expenses'),
+        where('userId', '==', userId),
+        where('vehicleId', '==', vehicleId)
+      );
+      const expSnap = await getDocs(expQ);
+      for (const dSnap of expSnap.docs) {
+        currentBatch.delete(dSnap.ref);
+        batchOpCount++;
+        await commitIfNeeded();
+      }
+
+      // 3. Queue deletion of related documents
+      const docQ = query(
+        collection(db, 'documents'),
+        where('userId', '==', userId),
+        where('vehicleId', '==', vehicleId)
+      );
+      const docSnap = await getDocs(docQ);
+      for (const dSnap of docSnap.docs) {
+        currentBatch.delete(dSnap.ref);
+        batchOpCount++;
+        await commitIfNeeded();
+      }
+
+      // 4. Queue deletion of related mileage logs
+      const mileQ = query(
+        collection(db, 'mileage'),
+        where('userId', '==', userId),
+        where('vehicleId', '==', vehicleId)
+      );
+      const mileSnap = await getDocs(mileQ);
+      for (const dSnap of mileSnap.docs) {
+        currentBatch.delete(dSnap.ref);
+        batchOpCount++;
+        await commitIfNeeded();
+      }
+
+      // 5. Delete the vehicle document itself
+      const vehDocRef = doc(db, COLLECTION_NAME, vehicleId);
+      currentBatch.delete(vehDocRef);
+      batchOpCount++;
+
+      await commitIfNeeded(true);
     } catch (error) {
-      console.error('Error deleting vehicle from Firestore:', error);
-      throw new Error('No se pudo eliminar el vehículo.');
+      console.error('Error deleting vehicle and related items from Firestore:', error);
+      throw new Error('No se pudo eliminar el vehículo y sus registros asociados.');
     }
   },
 };
+

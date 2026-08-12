@@ -434,10 +434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteVehicle = async (id: string) => {
     if (db && user && !isDemoMode) {
-      await vehicleService.deleteVehicle(id);
-      await maintenanceService.deleteByVehicle(user.id, id);
-      await expenseService.deleteByVehicle(user.id, id);
-      await documentService.deleteByVehicle(user.id, id);
+      await vehicleService.deleteVehicle(id, user.id);
     } else {
       setVehicles((prev) => prev.filter((v) => v.id !== id));
       setMaintenances((prev) => prev.filter((m) => m.vehicleId !== id));

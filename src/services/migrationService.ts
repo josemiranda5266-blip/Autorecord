@@ -1,8 +1,5 @@
-import { vehicleService } from './vehicleService';
-import { maintenanceService } from './maintenanceService';
-import { expenseService } from './expenseService';
-import { documentService } from './documentService';
-import { mileageService } from './mileageService';
+import { doc, writeBatch } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
 import { Vehicle, MaintenanceItem, Expense, DocumentRecord, MileageLog } from '../types';
 
 const MIGRATION_FLAG_KEY = 'autorecord_migrated_uid_';
@@ -25,73 +22,142 @@ export const migrationService = {
   },
 
   async migrateLocalDataToFirestore(
-    userId: string,
+    userIdParam: string,
     localData: LocalDataToMigrate
   ): Promise<{ success: boolean; migratedCount: number; error?: string }> {
-    if (this.hasBeenMigrated(userId)) {
+    if (!db) {
+      return { success: false, migratedCount: 0, error: 'Firestore no está inicializado.' };
+    }
+
+    // Always enforce current authenticated Firebase Auth UID over any LocalStorage string
+    const currentAuthUid = auth?.currentUser?.uid;
+    const targetUserId = currentAuthUid || userIdParam;
+
+    if (!targetUserId) {
+      return { success: false, migratedCount: 0, error: 'Usuario no autenticado.' };
+    }
+
+    if (this.hasBeenMigrated(targetUserId)) {
       return { success: true, migratedCount: 0 };
     }
 
     try {
       let migratedCount = 0;
+      const batchLimit = 400; // Safe threshold below Firestore 500 limit
+      let currentBatch = writeBatch(db);
+      let batchOpCount = 0;
 
-      // Map vehicle IDs if needed, ensure userId is attached
-      const vehicleMap = new Map<string, string>();
+      const commitBatchIfNeeded = async (force = false) => {
+        if (batchOpCount > 0 && (batchOpCount >= batchLimit || force)) {
+          await currentBatch.commit();
+          currentBatch = writeBatch(db);
+          batchOpCount = 0;
+        }
+      };
 
+      // 1. Migrate vehicles using original IDs for idempotency
       for (const v of localData.vehicles) {
-        const newVehicle: Vehicle = {
-          ...v,
-          userId,
-        };
-        await vehicleService.addVehicle(newVehicle);
-        vehicleMap.set(v.id, newVehicle.id);
+        if (!v.id) continue;
+        const vehicleDocRef = doc(db, 'vehicles', v.id);
+        const { id, ...vData } = v;
+        currentBatch.set(
+          vehicleDocRef,
+          {
+            ...vData,
+            id: v.id,
+            userId: targetUserId,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+        batchOpCount++;
         migratedCount++;
+        await commitBatchIfNeeded();
       }
 
+      // 2. Migrate maintenances
       for (const m of localData.maintenances) {
-        const newMaint: MaintenanceItem = {
-          ...m,
-          userId,
-          vehicleId: vehicleMap.get(m.vehicleId) || m.vehicleId,
-        };
-        await maintenanceService.addMaintenance(newMaint);
+        if (!m.id || !m.vehicleId) continue;
+        const maintDocRef = doc(db, 'maintenance', m.id);
+        const { id, ...mData } = m;
+        currentBatch.set(
+          maintDocRef,
+          {
+            ...mData,
+            id: m.id,
+            userId: targetUserId,
+          },
+          { merge: true }
+        );
+        batchOpCount++;
         migratedCount++;
+        await commitBatchIfNeeded();
       }
 
+      // 3. Migrate expenses
       for (const e of localData.expenses) {
-        const newExpense: Expense = {
-          ...e,
-          userId,
-          vehicleId: vehicleMap.get(e.vehicleId) || e.vehicleId,
-        };
-        await expenseService.addExpense(newExpense);
+        if (!e.id || !e.vehicleId) continue;
+        const expDocRef = doc(db, 'expenses', e.id);
+        const { id, ...eData } = e;
+        currentBatch.set(
+          expDocRef,
+          {
+            ...eData,
+            id: e.id,
+            userId: targetUserId,
+          },
+          { merge: true }
+        );
+        batchOpCount++;
         migratedCount++;
+        await commitBatchIfNeeded();
       }
 
+      // 4. Migrate documents
       for (const d of localData.documents) {
-        const newDoc: DocumentRecord = {
-          ...d,
-          userId,
-          vehicleId: vehicleMap.get(d.vehicleId) || d.vehicleId,
-        };
-        await documentService.addDocument(newDoc);
+        if (!d.id || !d.vehicleId) continue;
+        const docRef = doc(db, 'documents', d.id);
+        const { id, ...dData } = d;
+        currentBatch.set(
+          docRef,
+          {
+            ...dData,
+            id: d.id,
+            userId: targetUserId,
+          },
+          { merge: true }
+        );
+        batchOpCount++;
         migratedCount++;
+        await commitBatchIfNeeded();
       }
 
+      // 5. Migrate mileage logs
       for (const ml of localData.mileageLogs) {
-        const newLog: MileageLog = {
-          ...ml,
-          userId,
-          vehicleId: vehicleMap.get(ml.vehicleId) || ml.vehicleId,
-        };
-        await mileageService.addMileageLog(newLog);
+        if (!ml.id || !ml.vehicleId) continue;
+        const logDocRef = doc(db, 'mileage', ml.id);
+        const { id, ...mlData } = ml;
+        currentBatch.set(
+          logDocRef,
+          {
+            ...mlData,
+            id: ml.id,
+            userId: targetUserId,
+          },
+          { merge: true }
+        );
+        batchOpCount++;
         migratedCount++;
+        await commitBatchIfNeeded();
       }
 
-      this.markAsMigrated(userId);
+      // Commit any remaining operations
+      await commitBatchIfNeeded(true);
+
+      this.markAsMigrated(targetUserId);
       return { success: true, migratedCount };
     } catch (err: unknown) {
-      console.error('Error during data migration to Firestore:', err);
+      console.error('Error durante la migración atómica a Firestore:', err);
       return {
         success: false,
         migratedCount: 0,
@@ -100,3 +166,4 @@ export const migrationService = {
     }
   },
 };
+

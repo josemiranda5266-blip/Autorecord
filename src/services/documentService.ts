@@ -65,8 +65,9 @@ export const documentService = {
   async updateDocument(docId: string, updates: Partial<DocumentRecord>): Promise<void> {
     if (!db) return;
     try {
+      const { id, userId, createdAt, ...sanitizedUpdates } = updates as DocumentRecord;
       const docRef = doc(db, COLLECTION_NAME, docId);
-      await updateDoc(docRef, updates);
+      await updateDoc(docRef, sanitizedUpdates);
     } catch (error) {
       console.error('Error updating document in Firestore:', error);
       throw new Error('No se pudo actualizar el documento.');

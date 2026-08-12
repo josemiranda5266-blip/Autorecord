@@ -65,8 +65,9 @@ export const maintenanceService = {
   async updateMaintenance(itemId: string, updates: Partial<MaintenanceItem>): Promise<void> {
     if (!db) return;
     try {
+      const { id, userId, createdAt, ...sanitizedUpdates } = updates as MaintenanceItem;
       const docRef = doc(db, COLLECTION_NAME, itemId);
-      await updateDoc(docRef, updates);
+      await updateDoc(docRef, sanitizedUpdates);
     } catch (error) {
       console.error('Error updating maintenance in Firestore:', error);
       throw new Error('No se pudo actualizar el mantenimiento.');

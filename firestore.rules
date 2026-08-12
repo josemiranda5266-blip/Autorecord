@@ -12,6 +12,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Helper function to verify that a vehicleId belongs to the authenticated user
+    function isVehicleOwner(vehicleId) {
+      return isSignedIn() &&
+        vehicleId != null &&
+        exists(/databases/$(database)/documents/vehicles/$(vehicleId)) &&
+        get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.userId == request.auth.uid;
+    }
+
     // Default deny catch-all
     match /{document=**} {
       allow read, write: if false;
@@ -19,49 +27,64 @@ service cloud.firestore {
 
     // Users profile collection
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, create, update: if isOwner(userId);
+      allow delete: if false;
     }
 
     // Vehicles collection
     match /vehicles/{vehicleId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Maintenance collection
     match /maintenance/{maintenanceId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Expenses collection
     match /expenses/{expenseId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Documents collection
     match /documents/{documentId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Mileage collection
     match /mileage/{mileageId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Mileage logs collection alias
     match /mileageLogs/{mileageLogId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Reminders collection
     match /reminders/{reminderId} {
-      allow read, create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isVehicleOwner(request.resource.data.vehicleId);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
   }
 }

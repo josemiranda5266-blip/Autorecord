@@ -65,8 +65,9 @@ export const expenseService = {
   async updateExpense(expenseId: string, updates: Partial<Expense>): Promise<void> {
     if (!db) return;
     try {
+      const { id, userId, createdAt, ...sanitizedUpdates } = updates as Expense;
       const docRef = doc(db, COLLECTION_NAME, expenseId);
-      await updateDoc(docRef, updates);
+      await updateDoc(docRef, sanitizedUpdates);
     } catch (error) {
       console.error('Error updating expense in Firestore:', error);
       throw new Error('No se pudo actualizar el gasto.');
