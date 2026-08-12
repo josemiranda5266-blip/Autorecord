@@ -13,7 +13,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   initialMode = 'login',
 }) => {
-  const { login, register, loadDemoData } = useApp();
+  const { login, register, resetPassword, loadDemoData } = useApp();
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,7 +35,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (!email || !password) {
           throw new Error('Completá email y contraseña.');
         }
-        await login(email);
+        await login(email, password);
         onClose();
       } else if (mode === 'register') {
         if (!email || !password || !name) {
@@ -44,12 +44,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (password.length < 6) {
           throw new Error('La contraseña debe tener al menos 6 caracteres.');
         }
-        await register(email, name);
+        await register(email, name, password);
         onClose();
       } else if (mode === 'forgot') {
         if (!email) {
           throw new Error('Ingresá tu correo electrónico.');
         }
+        await resetPassword(email);
         setSuccessMsg(
           'Enviamos las instrucciones de recuperación a tu correo electrónico.'
         );

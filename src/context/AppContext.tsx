@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as fbSignOut,
+  sendPasswordResetEmail,
+  updateProfile,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import {
   Vehicle,
   MaintenanceItem,
   Expense,
@@ -18,6 +28,7 @@ export type TabType =
   | 'history'
   | 'vehicles'
   | 'profile';
+
 import {
   DEMO_VEHICLE,
   DEMO_MAINTENANCES,
@@ -26,6 +37,13 @@ import {
   DEMO_MILEAGE_LOGS,
   DEMO_USER_ID,
 } from '../data/initialData';
+
+import { vehicleService } from '../services/vehicleService';
+import { maintenanceService } from '../services/maintenanceService';
+import { expenseService } from '../services/expenseService';
+import { documentService } from '../services/documentService';
+import { mileageService } from '../services/mileageService';
+import { migrationService } from '../services/migrationService';
 
 interface AppContextType {
   user: UserProfile | null;
@@ -40,15 +58,16 @@ interface AppContextType {
   documents: DocumentRecord[];
   mileageLogs: MileageLog[];
   reminders: Reminder[];
-  
+
   // Active Navigation Tab State
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  
+
   // Auth Actions
-  login: (email: string) => Promise<void>;
-  register: (email: string, name: string) => Promise<void>;
-  logout: () => void;
+  login: (email: string, pass: string) => Promise<void>;
+  register: (email: string, name: string, pass: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  logout: () => Promise<void>;
   loadDemoData: () => void;
   clearAllData: () => void;
   upgradeToPremium: () => void;
@@ -58,7 +77,7 @@ interface AppContextType {
   updateVehicle: (id: string, vehicleData: Partial<Vehicle>) => Promise<void>;
   deleteVehicle: (id: string) => Promise<void>;
   setActiveVehicleId: (id: string) => void;
-  
+
   // Mileage Action
   updateMileage: (vehicleId: string, newMileage: number, notes?: string) => Promise<{ success: boolean; isLower: boolean }>;
 
@@ -102,7 +121,7 @@ interface StoredData {
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [userPlan, setUserPlan] = useState<'free' | 'premium'>('free');
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [activeVehicleId, setActiveVehicleId] = useState<string | null>(null);
@@ -113,37 +132,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
 
-  // Initialize from LocalStorage or Load Default Demo
+  // Subscribe to Firebase Auth changes
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        const parsed: StoredData = JSON.parse(saved);
-        setUser(parsed.user);
-        setIsDemoMode(parsed.isDemoMode);
-        setUserPlan(parsed.userPlan || 'free');
-        setVehicles(parsed.vehicles || []);
-        setActiveVehicleId(parsed.activeVehicleId || null);
-        setMaintenances(parsed.maintenances || []);
-        setExpenses(parsed.expenses || []);
-        setDocuments(parsed.documents || []);
-        setMileageLogs(parsed.mileageLogs || []);
-        setReminders(parsed.reminders || []);
-      } else {
-        // First load: load realistic Demo Data for Kangoo 2011
+    if (!auth) {
+      // Local fallback mode when Firebase Auth isn't initialized
+      try {
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          const parsed: StoredData = JSON.parse(saved);
+          setUser(parsed.user);
+          setIsDemoMode(parsed.isDemoMode);
+          setUserPlan(parsed.userPlan || 'free');
+          setVehicles(parsed.vehicles || []);
+          setActiveVehicleId(parsed.activeVehicleId || null);
+          setMaintenances(parsed.maintenances || []);
+          setExpenses(parsed.expenses || []);
+          setDocuments(parsed.documents || []);
+          setMileageLogs(parsed.mileageLogs || []);
+          setReminders(parsed.reminders || []);
+        } else {
+          loadDemoDataInternal();
+        }
+      } catch (e) {
+        console.error('Error loading stored local data:', e);
         loadDemoDataInternal();
+      } finally {
+        setIsAuthReady(true);
       }
-    } catch (e) {
-      console.error('Error loading stored data:', e);
-      loadDemoDataInternal();
-    } finally {
-      setIsAuthReady(true);
+      return;
     }
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        const userProfile: UserProfile = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
+          plan: userPlan,
+          createdAt: new Date().toISOString(),
+        };
+        setUser(userProfile);
+        setIsDemoMode(false);
+
+        // Check for local data migration
+        try {
+          const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (saved) {
+            const parsed: StoredData = JSON.parse(saved);
+            if (
+              parsed.vehicles.length > 0 ||
+              parsed.maintenances.length > 0 ||
+              parsed.expenses.length > 0
+            ) {
+              await migrationService.migrateLocalDataToFirestore(firebaseUser.uid, {
+                vehicles: parsed.vehicles,
+                maintenances: parsed.maintenances,
+                expenses: parsed.expenses,
+                documents: parsed.documents,
+                mileageLogs: parsed.mileageLogs,
+              });
+            }
+          }
+        } catch (mErr) {
+          console.warn('Local migration check skipped:', mErr);
+        }
+
+        // Setup Firestore listeners
+        const unSubVehicles = vehicleService.subscribeVehicles(firebaseUser.uid, (vList) => {
+          setVehicles(vList);
+          if (vList.length > 0) {
+            setActiveVehicleId((prev) => (prev && vList.some((v) => v.id === prev) ? prev : vList[0].id));
+          } else {
+            setActiveVehicleId(null);
+          }
+        });
+
+        const unSubMaint = maintenanceService.subscribeMaintenances(firebaseUser.uid, setMaintenances);
+        const unSubExp = expenseService.subscribeExpenses(firebaseUser.uid, setExpenses);
+        const unSubDoc = documentService.subscribeDocuments(firebaseUser.uid, setDocuments);
+        const unSubMileage = mileageService.subscribeMileageLogs(firebaseUser.uid, setMileageLogs);
+
+        setIsAuthReady(true);
+
+        return () => {
+          unSubVehicles();
+          unSubMaint();
+          unSubExp();
+          unSubDoc();
+          unSubMileage();
+        };
+      } else {
+        // User logged out
+        setUser(null);
+        // If not in demo mode, clear user data
+        if (!isDemoMode) {
+          setVehicles([]);
+          setActiveVehicleId(null);
+          setMaintenances([]);
+          setExpenses([]);
+          setDocuments([]);
+          setMileageLogs([]);
+        }
+        setIsAuthReady(true);
+      }
+    });
+
+    return () => unsubscribeAuth();
   }, []);
 
-  // Save changes to localStorage
+  // Save local fallback cache
   useEffect(() => {
     if (!isAuthReady) return;
+    if (user && db) return; // Do not overwrite local storage when synced with Firestore
+
     const dataToSave: StoredData = {
       user,
       isDemoMode,
@@ -213,32 +314,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(LOCAL_STORAGE_KEY);
   };
 
-  const login = async (email: string) => {
-    const newUser: UserProfile = {
-      id: 'usr_' + Date.now(),
-      email,
-      displayName: email.split('@')[0],
-      plan: userPlan,
-      createdAt: new Date().toISOString(),
-    };
-    setUser(newUser);
-    setIsDemoMode(false);
+  // Auth Actions
+  const login = async (email: string, pass: string) => {
+    if (auth) {
+      try {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } catch (error: unknown) {
+        console.error('Firebase Auth login error:', error);
+        throw new Error(
+          error instanceof Error
+            ? error.message.replace('Firebase: ', '')
+            : 'No se pudo iniciar sesión. Verificá tu correo y contraseña.'
+        );
+      }
+    } else {
+      // Local fallback
+      const newUser: UserProfile = {
+        id: 'usr_' + Date.now(),
+        email,
+        displayName: email.split('@')[0],
+        plan: userPlan,
+        createdAt: new Date().toISOString(),
+      };
+      setUser(newUser);
+      setIsDemoMode(false);
+    }
   };
 
-  const register = async (email: string, name: string) => {
-    const newUser: UserProfile = {
-      id: 'usr_' + Date.now(),
-      email,
-      displayName: name || email.split('@')[0],
-      plan: 'free',
-      createdAt: new Date().toISOString(),
-    };
-    setUser(newUser);
-    setIsDemoMode(false);
+  const register = async (email: string, name: string, pass: string) => {
+    if (auth) {
+      try {
+        const res = await createUserWithEmailAndPassword(auth, email, pass);
+        if (res.user && name) {
+          await updateProfile(res.user, { displayName: name });
+        }
+      } catch (error: unknown) {
+        console.error('Firebase Auth register error:', error);
+        throw new Error(
+          error instanceof Error
+            ? error.message.replace('Firebase: ', '')
+            : 'No se pudo crear la cuenta.'
+        );
+      }
+    } else {
+      // Local fallback
+      const newUser: UserProfile = {
+        id: 'usr_' + Date.now(),
+        email,
+        displayName: name || email.split('@')[0],
+        plan: 'free',
+        createdAt: new Date().toISOString(),
+      };
+      setUser(newUser);
+      setIsDemoMode(false);
+    }
   };
 
-  const logout = () => {
-    setUser(null);
+  const resetPassword = async (email: string) => {
+    if (auth) {
+      await sendPasswordResetEmail(auth, email);
+    }
+  };
+
+  const logout = async () => {
+    if (auth) {
+      await fbSignOut(auth);
+    }
+    clearAllData();
   };
 
   const upgradeToPremium = () => {
@@ -261,32 +403,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const id = 'veh_' + Date.now();
+    const userId = user?.id || 'local_user';
     const newVehicle: Vehicle = {
       ...vehicleData,
       id,
-      userId: user?.id || 'local_user',
+      userId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isMain: vehicles.length === 0 || vehicleData.isMain,
     };
 
-    setVehicles((prev) => [...prev, newVehicle]);
+    if (db && user && !isDemoMode) {
+      await vehicleService.addVehicle(newVehicle);
+    } else {
+      setVehicles((prev) => [...prev, newVehicle]);
+    }
     setActiveVehicleId(id);
     return id;
   };
 
   const updateVehicle = async (id: string, vehicleData: Partial<Vehicle>) => {
-    setVehicles((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, ...vehicleData, updatedAt: new Date().toISOString() } : v))
-    );
+    if (db && user && !isDemoMode) {
+      await vehicleService.updateVehicle(id, vehicleData);
+    } else {
+      setVehicles((prev) =>
+        prev.map((v) => (v.id === id ? { ...v, ...vehicleData, updatedAt: new Date().toISOString() } : v))
+      );
+    }
   };
 
   const deleteVehicle = async (id: string) => {
-    setVehicles((prev) => prev.filter((v) => v.id !== id));
-    setMaintenances((prev) => prev.filter((m) => m.vehicleId !== id));
-    setExpenses((prev) => prev.filter((e) => e.vehicleId !== id));
-    setDocuments((prev) => prev.filter((d) => d.vehicleId !== id));
-    setMileageLogs((prev) => prev.filter((m) => m.vehicleId !== id));
+    if (db && user && !isDemoMode) {
+      await vehicleService.deleteVehicle(id);
+      await maintenanceService.deleteByVehicle(user.id, id);
+      await expenseService.deleteByVehicle(user.id, id);
+      await documentService.deleteByVehicle(user.id, id);
+    } else {
+      setVehicles((prev) => prev.filter((v) => v.id !== id));
+      setMaintenances((prev) => prev.filter((m) => m.vehicleId !== id));
+      setExpenses((prev) => prev.filter((e) => e.vehicleId !== id));
+      setDocuments((prev) => prev.filter((d) => d.vehicleId !== id));
+      setMileageLogs((prev) => prev.filter((m) => m.vehicleId !== id));
+    }
 
     if (activeVehicleId === id) {
       const remaining = vehicles.filter((v) => v.id !== id);
@@ -294,21 +452,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Mileage Update with Warning & Auto-Recalculation
+  // Mileage Update with Validation & Storage
   const updateMileage = async (
     vehicleId: string,
     newMileage: number,
     notes?: string
   ): Promise<{ success: boolean; isLower: boolean }> => {
+    if (newMileage < 0) {
+      throw new Error('El kilometraje no puede ser negativo.');
+    }
+
     const targetVeh = vehicles.find((v) => v.id === vehicleId);
     if (!targetVeh) return { success: false, isLower: false };
 
     const isLower = newMileage < targetVeh.currentMileage;
+    const userId = user?.id || 'local_user';
 
-    // Save Mileage Log entry
     const newLog: MileageLog = {
       id: 'ml_' + Date.now(),
-      userId: user?.id || 'local_user',
+      userId,
       vehicleId,
       mileage: newMileage,
       date: new Date().toISOString().split('T')[0],
@@ -316,20 +478,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    setMileageLogs((prev) => [newLog, ...prev]);
-
-    // Update vehicle current mileage
-    setVehicles((prev) =>
-      prev.map((v) =>
-        v.id === vehicleId
-          ? {
-              ...v,
-              currentMileage: newMileage,
-              updatedAt: new Date().toISOString(),
-            }
-          : v
-      )
-    );
+    if (db && user && !isDemoMode) {
+      await mileageService.addMileageLog(newLog);
+      await vehicleService.updateVehicle(vehicleId, { currentMileage: newMileage });
+    } else {
+      setMileageLogs((prev) => [newLog, ...prev]);
+      setVehicles((prev) =>
+        prev.map((v) =>
+          v.id === vehicleId
+            ? {
+                ...v,
+                currentMileage: newMileage,
+                updatedAt: new Date().toISOString(),
+              }
+            : v
+        )
+      );
+    }
 
     return { success: true, isLower };
   };
@@ -338,70 +503,134 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addMaintenance = async (
     itemData: Omit<MaintenanceItem, 'id' | 'userId' | 'createdAt'>
   ) => {
+    if (itemData.cost < 0) {
+      throw new Error('El costo no puede ser negativo.');
+    }
+    const id = 'maint_' + Date.now();
+    const userId = user?.id || 'local_user';
     const newMaint: MaintenanceItem = {
       ...itemData,
-      id: 'maint_' + Date.now(),
-      userId: user?.id || 'local_user',
+      id,
+      userId,
       createdAt: new Date().toISOString(),
     };
-    setMaintenances((prev) => [newMaint, ...prev]);
+
+    if (db && user && !isDemoMode) {
+      await maintenanceService.addMaintenance(newMaint);
+    } else {
+      setMaintenances((prev) => [newMaint, ...prev]);
+    }
   };
 
   const updateMaintenance = async (id: string, itemData: Partial<MaintenanceItem>) => {
-    setMaintenances((prev) => prev.map((m) => (m.id === id ? { ...m, ...itemData } : m)));
+    if (itemData.cost !== undefined && itemData.cost < 0) {
+      throw new Error('El costo no puede ser negativo.');
+    }
+    if (db && user && !isDemoMode) {
+      await maintenanceService.updateMaintenance(id, itemData);
+    } else {
+      setMaintenances((prev) => prev.map((m) => (m.id === id ? { ...m, ...itemData } : m)));
+    }
   };
 
   const deleteMaintenance = async (id: string) => {
-    setMaintenances((prev) => prev.filter((m) => m.id !== id));
+    if (db && user && !isDemoMode) {
+      await maintenanceService.deleteMaintenance(id);
+    } else {
+      setMaintenances((prev) => prev.filter((m) => m.id !== id));
+    }
   };
 
   const toggleMaintenanceComplete = async (id: string) => {
-    setMaintenances((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, isCompleted: !m.isCompleted } : m))
-    );
+    const item = maintenances.find((m) => m.id === id);
+    if (!item) return;
+
+    if (db && user && !isDemoMode) {
+      await maintenanceService.updateMaintenance(id, { isCompleted: !item.isCompleted });
+    } else {
+      setMaintenances((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, isCompleted: !m.isCompleted } : m))
+      );
+    }
   };
 
   // Expense Actions
   const addExpense = async (expenseData: Omit<Expense, 'id' | 'userId' | 'createdAt'>) => {
+    if (expenseData.amount < 0) {
+      throw new Error('El monto del gasto no puede ser negativo.');
+    }
+    const id = 'exp_' + Date.now();
+    const userId = user?.id || 'local_user';
     const newExp: Expense = {
       ...expenseData,
-      id: 'exp_' + Date.now(),
-      userId: user?.id || 'local_user',
+      id,
+      userId,
       createdAt: new Date().toISOString(),
     };
-    setExpenses((prev) => [newExp, ...prev]);
+
+    if (db && user && !isDemoMode) {
+      await expenseService.addExpense(newExp);
+    } else {
+      setExpenses((prev) => [newExp, ...prev]);
+    }
   };
 
   const updateExpense = async (id: string, expenseData: Partial<Expense>) => {
-    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, ...expenseData } : e)));
+    if (expenseData.amount !== undefined && expenseData.amount < 0) {
+      throw new Error('El monto del gasto no puede ser negativo.');
+    }
+    if (db && user && !isDemoMode) {
+      await expenseService.updateExpense(id, expenseData);
+    } else {
+      setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, ...expenseData } : e)));
+    }
   };
 
   const deleteExpense = async (id: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    if (db && user && !isDemoMode) {
+      await expenseService.deleteExpense(id);
+    } else {
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
+    }
   };
 
   // Document Actions
   const addDocument = async (docData: Omit<DocumentRecord, 'id' | 'userId' | 'createdAt'>) => {
+    const id = 'doc_' + Date.now();
+    const userId = user?.id || 'local_user';
     const newDoc: DocumentRecord = {
       ...docData,
-      id: 'doc_' + Date.now(),
-      userId: user?.id || 'local_user',
+      id,
+      userId,
       createdAt: new Date().toISOString(),
     };
-    setDocuments((prev) => [newDoc, ...prev]);
+
+    if (db && user && !isDemoMode) {
+      await documentService.addDocument(newDoc);
+    } else {
+      setDocuments((prev) => [newDoc, ...prev]);
+    }
   };
 
   const updateDocument = async (id: string, docData: Partial<DocumentRecord>) => {
-    setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...docData } : d)));
+    if (db && user && !isDemoMode) {
+      await documentService.updateDocument(id, docData);
+    } else {
+      setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...docData } : d)));
+    }
   };
 
   const deleteDocument = async (id: string) => {
-    setDocuments((prev) => prev.filter((d) => d.id !== id));
+    if (db && user && !isDemoMode) {
+      await documentService.deleteDocument(id);
+    } else {
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+    }
   };
 
   const exportDataJSON = (): string => {
     const exportObj = {
-      version: 'AutoRecord 1.0',
+      version: 'AutoRecord 2.0',
       exportedAt: new Date().toISOString(),
       user,
       vehicles,
@@ -432,6 +661,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reminders,
         login,
         register,
+        resetPassword,
         logout,
         loadDemoData,
         clearAllData,

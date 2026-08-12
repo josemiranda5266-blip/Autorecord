@@ -91,6 +91,15 @@ export const SAFETY_MAINTENANCE_TYPES: MaintenanceType[] = [
   'Suspensión',
 ];
 
+export const MAINTENANCE_THRESHOLDS = {
+  PREVENTIVE_KM: 3000,
+  PREVENTIVE_DAYS: 60,
+  IMPORTANT_KM: 1000,
+  IMPORTANT_DAYS: 15,
+  CRITICAL_KM_EXCESS: -3000,
+  CRITICAL_DAYS_EXCESS: -60,
+};
+
 export function isSafetyComponentType(type: MaintenanceType): boolean {
   return SAFETY_MAINTENANCE_TYPES.includes(type);
 }
@@ -120,8 +129,10 @@ export function calculateMaintenanceUrgency(
     item.isSafetyComponent === true || isSafetyComponentType(item.type);
 
   // Severe overdue on safety or high excess -> CRITICAL (Level 5)
-  const isKmCritical = remainingKm !== undefined && remainingKm < -3000;
-  const isDaysCritical = remainingDays !== undefined && remainingDays < -60;
+  const isKmCritical =
+    remainingKm !== undefined && remainingKm < MAINTENANCE_THRESHOLDS.CRITICAL_KM_EXCESS;
+  const isDaysCritical =
+    remainingDays !== undefined && remainingDays < MAINTENANCE_THRESHOLDS.CRITICAL_DAYS_EXCESS;
   const isSafetyOverdue =
     isSafety &&
     ((remainingKm !== undefined && remainingKm < 0) ||
@@ -154,8 +165,10 @@ export function calculateMaintenanceUrgency(
   }
 
   // Close to due -> IMPORTANTE (Level 3)
-  const isKmImportant = remainingKm !== undefined && remainingKm <= 1000;
-  const isDaysImportant = remainingDays !== undefined && remainingDays <= 15;
+  const isKmImportant =
+    remainingKm !== undefined && remainingKm <= MAINTENANCE_THRESHOLDS.IMPORTANT_KM;
+  const isDaysImportant =
+    remainingDays !== undefined && remainingDays <= MAINTENANCE_THRESHOLDS.IMPORTANT_DAYS;
 
   if (isKmImportant || isDaysImportant) {
     let reason = 'El mantenimiento está muy próximo a vencer.';
@@ -168,8 +181,10 @@ export function calculateMaintenanceUrgency(
   }
 
   // Upcoming -> PREVENTIVO (Level 2)
-  const isKmPreventive = remainingKm !== undefined && remainingKm <= 3000;
-  const isDaysPreventive = remainingDays !== undefined && remainingDays <= 60;
+  const isKmPreventive =
+    remainingKm !== undefined && remainingKm <= MAINTENANCE_THRESHOLDS.PREVENTIVE_KM;
+  const isDaysPreventive =
+    remainingDays !== undefined && remainingDays <= MAINTENANCE_THRESHOLDS.PREVENTIVE_DAYS;
 
   if (isKmPreventive || isDaysPreventive) {
     let reason = 'Conviene planificar la revisión próximamente.';
@@ -305,28 +320,24 @@ export function generatePreventiveRecommendations(
     // Check if vehicle has an active or recent record for this rule.type
     const existingMaint = vehicleMaintenances.find((m) => m.type === rule.type);
     if (!existingMaint) {
-      // Suggest setting up a plan for this essential task
       const isSafety = isSafetyComponentType(rule.type);
-
-      // Default recommendation level based on vehicle mileage
-      let level: UrgencyLevel = 2; // Preventivo
-      let reason = `Sugerido por plan preventivo cada ${rule.intervalKm.toLocaleString('es-AR')} km o ${rule.intervalMonths} meses.`;
-
-      if (vehicle.currentMileage >= 100000 && (rule.type === 'Correa de distribución' || rule.type === 'Bujías')) {
-        level = 3; // Importante
-        reason = `Por kilometraje (${vehicle.currentMileage.toLocaleString('es-AR')} km), se sugiere verificar fecha del último cambio de ${rule.type.toLowerCase()}.`;
-      }
+      const level: UrgencyLevel = 2; // Preventivo
+      const reason = `No encontramos un mantenimiento de ${rule.type.toLowerCase()} registrado. Podés configurarlo o registrar el último realizado.`;
 
       recommendations.push({
         id: `rec-rule-${rule.type.toLowerCase().replace(/\s+/g, '-')}`,
         vehicleId: vehicle.id,
-        title: `Inspección de ${rule.type}`,
+        title: `Sin registro: ${rule.type}`,
         category: rule.type,
         reason,
         recommendedKmInterval: rule.intervalKm,
         recommendedMonthInterval: rule.intervalMonths,
         urgency: level,
-        urgencyInfo: getUrgencyInfo(level),
+        urgencyInfo: {
+          ...getUrgencyInfo(level),
+          actionText: 'Registrar mantenimiento',
+          shortDescription: `No encontramos un mantenimiento de ${rule.type.toLowerCase()} registrado.`,
+        },
         isSafetyComponent: isSafety,
         status: 'pending',
         createdAt: new Date().toISOString(),
