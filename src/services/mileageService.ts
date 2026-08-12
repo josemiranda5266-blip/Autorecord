@@ -13,9 +13,9 @@ import { MileageLog } from '../types';
 const COLLECTION_NAME = 'mileage';
 
 export const mileageService = {
-  async getMileageLogs(userId?: string): Promise<MileageLog[]> {
+  async getMileageLogs(): Promise<MileageLog[]> {
     if (!db) return [];
-    const uid = auth?.currentUser?.uid || userId;
+    const uid = auth?.currentUser?.uid;
     if (!uid) return [];
     try {
       const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
@@ -30,19 +30,7 @@ export const mileageService = {
     }
   },
 
-  subscribeMileageLogs(
-    param1: string | ((items: MileageLog[]) => void),
-    param2?: (items: MileageLog[]) => void
-  ) {
-    let onUpdate: (items: MileageLog[]) => void;
-    if (typeof param1 === 'function') {
-      onUpdate = param1;
-    } else if (typeof param2 === 'function') {
-      onUpdate = param2;
-    } else {
-      return () => {};
-    }
-
+  subscribeMileageLogs(onUpdate: (items: MileageLog[]) => void) {
     if (!db) {
       onUpdate([]);
       return () => {};
@@ -68,7 +56,7 @@ export const mileageService = {
     );
   },
 
-  async addMileageLog(log: MileageLog): Promise<void> {
+  async addMileageLog(log: Omit<MileageLog, 'userId'> & { id: string; userId?: string }): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {

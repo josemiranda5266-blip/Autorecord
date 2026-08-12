@@ -15,9 +15,9 @@ import { Expense } from '../types';
 const COLLECTION_NAME = 'expenses';
 
 export const expenseService = {
-  async getExpenses(userId?: string): Promise<Expense[]> {
+  async getExpenses(): Promise<Expense[]> {
     if (!db) return [];
-    const uid = auth?.currentUser?.uid || userId;
+    const uid = auth?.currentUser?.uid;
     if (!uid) return [];
     try {
       const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
@@ -32,19 +32,7 @@ export const expenseService = {
     }
   },
 
-  subscribeExpenses(
-    param1: string | ((items: Expense[]) => void),
-    param2?: (items: Expense[]) => void
-  ) {
-    let onUpdate: (items: Expense[]) => void;
-    if (typeof param1 === 'function') {
-      onUpdate = param1;
-    } else if (typeof param2 === 'function') {
-      onUpdate = param2;
-    } else {
-      return () => {};
-    }
-
+  subscribeExpenses(onUpdate: (items: Expense[]) => void) {
     if (!db) {
       onUpdate([]);
       return () => {};
@@ -70,7 +58,7 @@ export const expenseService = {
     );
   },
 
-  async addExpense(expense: Expense): Promise<void> {
+  async addExpense(expense: Omit<Expense, 'userId'> & { id: string; userId?: string }): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {

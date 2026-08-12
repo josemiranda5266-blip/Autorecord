@@ -58,7 +58,7 @@ export const reminderService = {
     );
   },
 
-  async addReminder(reminder: Reminder): Promise<void> {
+  async addReminder(reminder: Omit<Reminder, 'userId'> & { id: string; userId?: string }): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {

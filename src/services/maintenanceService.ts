@@ -15,9 +15,9 @@ import { MaintenanceItem } from '../types';
 const COLLECTION_NAME = 'maintenance';
 
 export const maintenanceService = {
-  async getMaintenances(userId?: string): Promise<MaintenanceItem[]> {
+  async getMaintenances(): Promise<MaintenanceItem[]> {
     if (!db) return [];
-    const uid = auth?.currentUser?.uid || userId;
+    const uid = auth?.currentUser?.uid;
     if (!uid) return [];
     try {
       const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
@@ -32,19 +32,7 @@ export const maintenanceService = {
     }
   },
 
-  subscribeMaintenances(
-    param1: string | ((items: MaintenanceItem[]) => void),
-    param2?: (items: MaintenanceItem[]) => void
-  ) {
-    let onUpdate: (items: MaintenanceItem[]) => void;
-    if (typeof param1 === 'function') {
-      onUpdate = param1;
-    } else if (typeof param2 === 'function') {
-      onUpdate = param2;
-    } else {
-      return () => {};
-    }
-
+  subscribeMaintenances(onUpdate: (items: MaintenanceItem[]) => void) {
     if (!db) {
       onUpdate([]);
       return () => {};
@@ -70,7 +58,7 @@ export const maintenanceService = {
     );
   },
 
-  async addMaintenance(item: MaintenanceItem): Promise<void> {
+  async addMaintenance(item: Omit<MaintenanceItem, 'userId'> & { id: string; userId?: string }): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {

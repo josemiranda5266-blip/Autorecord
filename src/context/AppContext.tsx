@@ -416,20 +416,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const id = 'veh_' + Date.now();
-    const userId = user?.id || '';
-    const newVehicle: Vehicle = {
+    const newVehicleData = {
       ...vehicleData,
       id,
-      userId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isMain: vehicles.length === 0 || vehicleData.isMain,
     };
 
     if (db && user && !isDemoMode) {
-      await vehicleService.addVehicle(newVehicle);
+      await vehicleService.addVehicle(newVehicleData);
     } else {
-      setVehicles((prev) => [...prev, newVehicle]);
+      setVehicles((prev) => [...prev, { ...newVehicleData, userId: user?.id || '' }]);
     }
     setActiveVehicleId(id);
     return id;
@@ -477,11 +475,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetVeh) return { success: false, isLower: false };
 
     const isLower = newMileage < targetVeh.currentMileage;
-    const userId = user?.id || '';
 
-    const newLog: MileageLog = {
+    const newLogData = {
       id: 'ml_' + Date.now(),
-      userId,
       vehicleId,
       mileage: newMileage,
       date: new Date().toISOString().split('T')[0],
@@ -490,10 +486,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (db && user && !isDemoMode) {
-      await mileageService.addMileageLog(newLog);
+      await mileageService.addMileageLog(newLogData);
       await vehicleService.updateVehicle(vehicleId, { currentMileage: newMileage });
     } else {
-      setMileageLogs((prev) => [newLog, ...prev]);
+      setMileageLogs((prev) => [{ ...newLogData, userId: user?.id || '' }, ...prev]);
       setVehicles((prev) =>
         prev.map((v) =>
           v.id === vehicleId
@@ -518,18 +514,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('El costo no puede ser negativo.');
     }
     const id = 'maint_' + Date.now();
-    const userId = user?.id || '';
-    const newMaint: MaintenanceItem = {
+    const newMaintData = {
       ...itemData,
       id,
-      userId,
       createdAt: new Date().toISOString(),
     };
 
     if (db && user && !isDemoMode) {
-      await maintenanceService.addMaintenance(newMaint);
+      await maintenanceService.addMaintenance(newMaintData);
     } else {
-      setMaintenances((prev) => [newMaint, ...prev]);
+      setMaintenances((prev) => [{ ...newMaintData, userId: user?.id || '' }, ...prev]);
     }
   };
 
@@ -571,18 +565,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('El monto del gasto no puede ser negativo.');
     }
     const id = 'exp_' + Date.now();
-    const userId = user?.id || '';
-    const newExp: Expense = {
+    const newExpData = {
       ...expenseData,
       id,
-      userId,
       createdAt: new Date().toISOString(),
     };
 
     if (db && user && !isDemoMode) {
-      await expenseService.addExpense(newExp);
+      await expenseService.addExpense(newExpData);
     } else {
-      setExpenses((prev) => [newExp, ...prev]);
+      setExpenses((prev) => [{ ...newExpData, userId: user?.id || '' }, ...prev]);
     }
   };
 
@@ -608,18 +600,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Document Actions
   const addDocument = async (docData: Omit<DocumentRecord, 'id' | 'userId' | 'createdAt'>) => {
     const id = 'doc_' + Date.now();
-    const userId = user?.id || '';
-    const newDoc: DocumentRecord = {
+    const newDocData = {
       ...docData,
       id,
-      userId,
       createdAt: new Date().toISOString(),
     };
 
     if (db && user && !isDemoMode) {
-      await documentService.addDocument(newDoc);
+      await documentService.addDocument(newDocData);
     } else {
-      setDocuments((prev) => [newDoc, ...prev]);
+      setDocuments((prev) => [{ ...newDocData, userId: user?.id || '' }, ...prev]);
     }
   };
 

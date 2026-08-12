@@ -17,9 +17,9 @@ import { Vehicle } from '../types';
 const COLLECTION_NAME = 'vehicles';
 
 export const vehicleService = {
-  async getVehicles(userId?: string): Promise<Vehicle[]> {
+  async getVehicles(): Promise<Vehicle[]> {
     if (!db) return [];
-    const uid = auth?.currentUser?.uid || userId;
+    const uid = auth?.currentUser?.uid;
     if (!uid) return [];
     try {
       const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
@@ -34,19 +34,7 @@ export const vehicleService = {
     }
   },
 
-  subscribeVehicles(
-    param1: string | ((vehicles: Vehicle[]) => void),
-    param2?: (vehicles: Vehicle[]) => void
-  ) {
-    let onUpdate: (vehicles: Vehicle[]) => void;
-    if (typeof param1 === 'function') {
-      onUpdate = param1;
-    } else if (typeof param2 === 'function') {
-      onUpdate = param2;
-    } else {
-      return () => {};
-    }
-
+  subscribeVehicles(onUpdate: (vehicles: Vehicle[]) => void) {
     if (!db) {
       onUpdate([]);
       return () => {};
@@ -72,7 +60,7 @@ export const vehicleService = {
     );
   },
 
-  async addVehicle(vehicle: Vehicle): Promise<void> {
+  async addVehicle(vehicle: Omit<Vehicle, 'userId'> & { id: string; userId?: string }): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {

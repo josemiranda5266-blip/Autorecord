@@ -79,15 +79,17 @@ export const userService = {
     }
   },
 
-  async getUserProfile(uid: string): Promise<UserProfile | null> {
+  async getUserProfile(uid?: string): Promise<UserProfile | null> {
     if (!db) return null;
+    const targetUid = auth?.currentUser?.uid || uid;
+    if (!targetUid) return null;
     try {
-      const userRef = doc(db, COLLECTION_NAME, uid);
+      const userRef = doc(db, COLLECTION_NAME, targetUid);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
         const data = userSnap.data();
         return {
-          id: uid,
+          id: targetUid,
           email: data.email || '',
           displayName: data.displayName || '',
           plan: data.plan || 'free',

@@ -15,9 +15,9 @@ import { DocumentRecord } from '../types';
 const COLLECTION_NAME = 'documents';
 
 export const documentService = {
-  async getDocuments(userId?: string): Promise<DocumentRecord[]> {
+  async getDocuments(): Promise<DocumentRecord[]> {
     if (!db) return [];
-    const uid = auth?.currentUser?.uid || userId;
+    const uid = auth?.currentUser?.uid;
     if (!uid) return [];
     try {
       const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
@@ -32,19 +32,7 @@ export const documentService = {
     }
   },
 
-  subscribeDocuments(
-    param1: string | ((items: DocumentRecord[]) => void),
-    param2?: (items: DocumentRecord[]) => void
-  ) {
-    let onUpdate: (items: DocumentRecord[]) => void;
-    if (typeof param1 === 'function') {
-      onUpdate = param1;
-    } else if (typeof param2 === 'function') {
-      onUpdate = param2;
-    } else {
-      return () => {};
-    }
-
+  subscribeDocuments(onUpdate: (items: DocumentRecord[]) => void) {
     if (!db) {
       onUpdate([]);
       return () => {};
@@ -70,7 +58,7 @@ export const documentService = {
     );
   },
 
-  async addDocument(documentRecord: DocumentRecord): Promise<void> {
+  async addDocument(documentRecord: Omit<DocumentRecord, 'userId'> & { id: string; userId?: string }): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {
