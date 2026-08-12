@@ -17,10 +17,12 @@ import { Vehicle } from '../types';
 const COLLECTION_NAME = 'vehicles';
 
 export const vehicleService = {
-  async getVehicles(userId: string): Promise<Vehicle[]> {
+  async getVehicles(userId?: string): Promise<Vehicle[]> {
     if (!db) return [];
+    const uid = auth?.currentUser?.uid || userId;
+    if (!uid) return [];
     try {
-      const q = query(collection(db, COLLECTION_NAME), where('userId', '==', userId));
+      const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
       const snapshot = await getDocs(q);
       return snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
@@ -32,12 +34,29 @@ export const vehicleService = {
     }
   },
 
-  subscribeVehicles(userId: string, onUpdate: (vehicles: Vehicle[]) => void) {
+  subscribeVehicles(
+    param1: string | ((vehicles: Vehicle[]) => void),
+    param2?: (vehicles: Vehicle[]) => void
+  ) {
+    let onUpdate: (vehicles: Vehicle[]) => void;
+    if (typeof param1 === 'function') {
+      onUpdate = param1;
+    } else if (typeof param2 === 'function') {
+      onUpdate = param2;
+    } else {
+      return () => {};
+    }
+
     if (!db) {
       onUpdate([]);
       return () => {};
     }
-    const q = query(collection(db, COLLECTION_NAME), where('userId', '==', userId));
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      onUpdate([]);
+      return () => {};
+    }
+    const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
     return onSnapshot(
       q,
       (snapshot) => {
@@ -55,9 +74,13 @@ export const vehicleService = {
 
   async addVehicle(vehicle: Vehicle): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      throw new Error('Usuario no autenticado.');
+    }
     try {
       const docRef = doc(db, COLLECTION_NAME, vehicle.id);
-      await setDoc(docRef, vehicle);
+      await setDoc(docRef, { ...vehicle, userId: uid });
     } catch (error) {
       console.error('Error adding vehicle to Firestore:', error);
       throw new Error('No se pudo guardar el vehículo. Verificá tu conexión e intentá nuevamente.');
@@ -66,6 +89,10 @@ export const vehicleService = {
 
   async updateVehicle(vehicleId: string, updates: Partial<Vehicle>): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      throw new Error('Usuario no autenticado.');
+    }
     try {
       const { id, userId, createdAt, ...sanitizedUpdates } = updates as Vehicle;
       const docRef = doc(db, COLLECTION_NAME, vehicleId);
@@ -79,18 +106,13 @@ export const vehicleService = {
     }
   },
 
-  async deleteVehicle(vehicleId: string, userIdParam?: string): Promise<void> {
+  async deleteVehicle(vehicleId: string): Promise<void> {
     if (!db) return;
 
     // Obtener UID directamente del usuario autenticado en Firebase Auth
     const authenticatedUid = auth?.currentUser?.uid;
     if (!authenticatedUid) {
       throw new Error('Usuario no autenticado.');
-    }
-
-    // Si se pasa un parámetro de userId, verificar estrictamente que coincida con el UID autenticado
-    if (userIdParam && userIdParam !== authenticatedUid) {
-      throw new Error('No coinciden las credenciales del usuario autenticado.');
     }
 
     try {

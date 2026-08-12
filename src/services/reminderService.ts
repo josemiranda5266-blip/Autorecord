@@ -10,14 +10,14 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { DocumentRecord } from '../types';
+import { Reminder } from '../types';
 
-const COLLECTION_NAME = 'documents';
+const COLLECTION_NAME = 'reminders';
 
-export const documentService = {
-  async getDocuments(userId?: string): Promise<DocumentRecord[]> {
+export const reminderService = {
+  async getReminders(): Promise<Reminder[]> {
     if (!db) return [];
-    const uid = auth?.currentUser?.uid || userId;
+    const uid = auth?.currentUser?.uid;
     if (!uid) return [];
     try {
       const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
@@ -25,26 +25,14 @@ export const documentService = {
       return snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...docSnap.data(),
-      })) as DocumentRecord[];
+      })) as Reminder[];
     } catch (error) {
-      console.error('Error fetching documents from Firestore:', error);
-      throw new Error('No se pudieron obtener los documentos.');
+      console.error('Error fetching reminders from Firestore:', error);
+      throw new Error('No se pudieron obtener los recordatorios.');
     }
   },
 
-  subscribeDocuments(
-    param1: string | ((items: DocumentRecord[]) => void),
-    param2?: (items: DocumentRecord[]) => void
-  ) {
-    let onUpdate: (items: DocumentRecord[]) => void;
-    if (typeof param1 === 'function') {
-      onUpdate = param1;
-    } else if (typeof param2 === 'function') {
-      onUpdate = param2;
-    } else {
-      return () => {};
-    }
-
+  subscribeReminders(onUpdate: (reminders: Reminder[]) => void) {
     if (!db) {
       onUpdate([]);
       return () => {};
@@ -61,58 +49,58 @@ export const documentService = {
         const items = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           ...docSnap.data(),
-        })) as DocumentRecord[];
+        })) as Reminder[];
         onUpdate(items);
       },
       (error) => {
-        console.error('Error in documents snapshot listener:', error);
+        console.error('Error in reminders snapshot listener:', error);
       }
     );
   },
 
-  async addDocument(documentRecord: DocumentRecord): Promise<void> {
+  async addReminder(reminder: Reminder): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {
       throw new Error('Usuario no autenticado.');
     }
     try {
-      const docRef = doc(db, COLLECTION_NAME, documentRecord.id);
-      await setDoc(docRef, { ...documentRecord, userId: uid });
+      const docRef = doc(db, COLLECTION_NAME, reminder.id);
+      await setDoc(docRef, { ...reminder, userId: uid });
     } catch (error) {
-      console.error('Error adding document to Firestore:', error);
-      throw new Error('No se pudo guardar el documento.');
+      console.error('Error adding reminder to Firestore:', error);
+      throw new Error('No se pudo guardar el recordatorio.');
     }
   },
 
-  async updateDocument(docId: string, updates: Partial<DocumentRecord>): Promise<void> {
+  async updateReminder(reminderId: string, updates: Partial<Reminder>): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {
       throw new Error('Usuario no autenticado.');
     }
     try {
-      const { id, userId, createdAt, ...sanitizedUpdates } = updates as DocumentRecord;
-      const docRef = doc(db, COLLECTION_NAME, docId);
+      const { id, userId, createdAt, ...sanitizedUpdates } = updates as Reminder;
+      const docRef = doc(db, COLLECTION_NAME, reminderId);
       await updateDoc(docRef, sanitizedUpdates);
     } catch (error) {
-      console.error('Error updating document in Firestore:', error);
-      throw new Error('No se pudo actualizar el documento.');
+      console.error('Error updating reminder in Firestore:', error);
+      throw new Error('No se pudo actualizar el recordatorio.');
     }
   },
 
-  async deleteDocument(docId: string): Promise<void> {
+  async deleteReminder(reminderId: string): Promise<void> {
     if (!db) return;
     const uid = auth?.currentUser?.uid;
     if (!uid) {
       throw new Error('Usuario no autenticado.');
     }
     try {
-      const docRef = doc(db, COLLECTION_NAME, docId);
+      const docRef = doc(db, COLLECTION_NAME, reminderId);
       await deleteDoc(docRef);
     } catch (error) {
-      console.error('Error deleting document from Firestore:', error);
-      throw new Error('No se pudo eliminar el documento.');
+      console.error('Error deleting reminder from Firestore:', error);
+      throw new Error('No se pudo eliminar el recordatorio.');
     }
   },
 
@@ -130,7 +118,7 @@ export const documentService = {
       const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
       await Promise.all(deletePromises);
     } catch (error) {
-      console.error('Error deleting vehicle documents:', error);
+      console.error('Error deleting vehicle reminders:', error);
     }
   },
 };

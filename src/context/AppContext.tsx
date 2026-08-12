@@ -43,6 +43,7 @@ import { maintenanceService } from '../services/maintenanceService';
 import { expenseService } from '../services/expenseService';
 import { documentService } from '../services/documentService';
 import { mileageService } from '../services/mileageService';
+import { reminderService } from '../services/reminderService';
 import { migrationService } from '../services/migrationService';
 import { userService } from '../services/userService';
 
@@ -186,7 +187,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (
               parsed.vehicles.length > 0 ||
               parsed.maintenances.length > 0 ||
-              parsed.expenses.length > 0
+              parsed.expenses.length > 0 ||
+              (parsed.reminders && parsed.reminders.length > 0)
             ) {
               await migrationService.migrateLocalDataToFirestore({
                 vehicles: parsed.vehicles,
@@ -194,6 +196,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 expenses: parsed.expenses,
                 documents: parsed.documents,
                 mileageLogs: parsed.mileageLogs,
+                reminders: parsed.reminders || [],
               });
             }
           }
@@ -202,7 +205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Setup Firestore listeners
-        const unSubVehicles = vehicleService.subscribeVehicles(firebaseUser.uid, (vList) => {
+        const unSubVehicles = vehicleService.subscribeVehicles((vList) => {
           setVehicles(vList);
           if (vList.length > 0) {
             setActiveVehicleId((prev) => (prev && vList.some((v) => v.id === prev) ? prev : vList[0].id));
@@ -211,10 +214,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         });
 
-        const unSubMaint = maintenanceService.subscribeMaintenances(firebaseUser.uid, setMaintenances);
-        const unSubExp = expenseService.subscribeExpenses(firebaseUser.uid, setExpenses);
-        const unSubDoc = documentService.subscribeDocuments(firebaseUser.uid, setDocuments);
-        const unSubMileage = mileageService.subscribeMileageLogs(firebaseUser.uid, setMileageLogs);
+        const unSubMaint = maintenanceService.subscribeMaintenances(setMaintenances);
+        const unSubExp = expenseService.subscribeExpenses(setExpenses);
+        const unSubDoc = documentService.subscribeDocuments(setDocuments);
+        const unSubMileage = mileageService.subscribeMileageLogs(setMileageLogs);
+        const unSubReminders = reminderService.subscribeReminders(setReminders);
 
         setIsAuthReady(true);
 
@@ -224,6 +228,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           unSubExp();
           unSubDoc();
           unSubMileage();
+          unSubReminders();
         };
       } else {
         // User logged out
@@ -306,6 +311,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const clearAllData = () => {
+    // Only remove local cache if in demo mode or if local data has been successfully migrated
+    if (isDemoMode || (user && migrationService.hasBeenMigrated(user.id))) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
     setUser(null);
     setIsDemoMode(false);
     setUserPlan('free');
@@ -316,7 +325,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDocuments([]);
     setMileageLogs([]);
     setReminders([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
   };
 
   // Auth Actions
@@ -408,7 +416,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const id = 'veh_' + Date.now();
-    const userId = user?.id || 'local_user';
+    const userId = user?.id || '';
     const newVehicle: Vehicle = {
       ...vehicleData,
       id,
@@ -439,13 +447,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteVehicle = async (id: string) => {
     if (db && user && !isDemoMode) {
-      await vehicleService.deleteVehicle(id, user.id);
+      await vehicleService.deleteVehicle(id);
     } else {
       setVehicles((prev) => prev.filter((v) => v.id !== id));
       setMaintenances((prev) => prev.filter((m) => m.vehicleId !== id));
       setExpenses((prev) => prev.filter((e) => e.vehicleId !== id));
       setDocuments((prev) => prev.filter((d) => d.vehicleId !== id));
       setMileageLogs((prev) => prev.filter((m) => m.vehicleId !== id));
+      setReminders((prev) => prev.filter((r) => r.vehicleId !== id));
     }
 
     if (activeVehicleId === id) {
@@ -468,7 +477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetVeh) return { success: false, isLower: false };
 
     const isLower = newMileage < targetVeh.currentMileage;
-    const userId = user?.id || 'local_user';
+    const userId = user?.id || '';
 
     const newLog: MileageLog = {
       id: 'ml_' + Date.now(),
@@ -509,7 +518,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('El costo no puede ser negativo.');
     }
     const id = 'maint_' + Date.now();
-    const userId = user?.id || 'local_user';
+    const userId = user?.id || '';
     const newMaint: MaintenanceItem = {
       ...itemData,
       id,
@@ -562,7 +571,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('El monto del gasto no puede ser negativo.');
     }
     const id = 'exp_' + Date.now();
-    const userId = user?.id || 'local_user';
+    const userId = user?.id || '';
     const newExp: Expense = {
       ...expenseData,
       id,
@@ -599,7 +608,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Document Actions
   const addDocument = async (docData: Omit<DocumentRecord, 'id' | 'userId' | 'createdAt'>) => {
     const id = 'doc_' + Date.now();
-    const userId = user?.id || 'local_user';
+    const userId = user?.id || '';
     const newDoc: DocumentRecord = {
       ...docData,
       id,

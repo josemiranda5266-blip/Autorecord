@@ -9,16 +9,18 @@ import {
   where,
   onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { MaintenanceItem } from '../types';
 
 const COLLECTION_NAME = 'maintenance';
 
 export const maintenanceService = {
-  async getMaintenances(userId: string): Promise<MaintenanceItem[]> {
+  async getMaintenances(userId?: string): Promise<MaintenanceItem[]> {
     if (!db) return [];
+    const uid = auth?.currentUser?.uid || userId;
+    if (!uid) return [];
     try {
-      const q = query(collection(db, COLLECTION_NAME), where('userId', '==', userId));
+      const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
       const snapshot = await getDocs(q);
       return snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
@@ -30,12 +32,29 @@ export const maintenanceService = {
     }
   },
 
-  subscribeMaintenances(userId: string, onUpdate: (items: MaintenanceItem[]) => void) {
+  subscribeMaintenances(
+    param1: string | ((items: MaintenanceItem[]) => void),
+    param2?: (items: MaintenanceItem[]) => void
+  ) {
+    let onUpdate: (items: MaintenanceItem[]) => void;
+    if (typeof param1 === 'function') {
+      onUpdate = param1;
+    } else if (typeof param2 === 'function') {
+      onUpdate = param2;
+    } else {
+      return () => {};
+    }
+
     if (!db) {
       onUpdate([]);
       return () => {};
     }
-    const q = query(collection(db, COLLECTION_NAME), where('userId', '==', userId));
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      onUpdate([]);
+      return () => {};
+    }
+    const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
     return onSnapshot(
       q,
       (snapshot) => {
@@ -53,9 +72,13 @@ export const maintenanceService = {
 
   async addMaintenance(item: MaintenanceItem): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      throw new Error('Usuario no autenticado.');
+    }
     try {
       const docRef = doc(db, COLLECTION_NAME, item.id);
-      await setDoc(docRef, item);
+      await setDoc(docRef, { ...item, userId: uid });
     } catch (error) {
       console.error('Error adding maintenance to Firestore:', error);
       throw new Error('No se pudo registrar el mantenimiento.');
@@ -64,6 +87,10 @@ export const maintenanceService = {
 
   async updateMaintenance(itemId: string, updates: Partial<MaintenanceItem>): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      throw new Error('Usuario no autenticado.');
+    }
     try {
       const { id, userId, createdAt, ...sanitizedUpdates } = updates as MaintenanceItem;
       const docRef = doc(db, COLLECTION_NAME, itemId);
@@ -76,6 +103,10 @@ export const maintenanceService = {
 
   async deleteMaintenance(itemId: string): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      throw new Error('Usuario no autenticado.');
+    }
     try {
       const docRef = doc(db, COLLECTION_NAME, itemId);
       await deleteDoc(docRef);
@@ -85,12 +116,14 @@ export const maintenanceService = {
     }
   },
 
-  async deleteByVehicle(userId: string, vehicleId: string): Promise<void> {
+  async deleteByVehicle(vehicleId: string): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) return;
     try {
       const q = query(
         collection(db, COLLECTION_NAME),
-        where('userId', '==', userId),
+        where('userId', '==', uid),
         where('vehicleId', '==', vehicleId)
       );
       const snapshot = await getDocs(q);

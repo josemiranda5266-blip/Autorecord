@@ -1,6 +1,6 @@
 import { doc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Vehicle, MaintenanceItem, Expense, DocumentRecord, MileageLog } from '../types';
+import { Vehicle, MaintenanceItem, Expense, DocumentRecord, MileageLog, Reminder } from '../types';
 
 const MIGRATION_FLAG_KEY = 'autorecord_migrated_uid_';
 
@@ -10,6 +10,7 @@ export interface LocalDataToMigrate {
   expenses: Expense[];
   documents: DocumentRecord[];
   mileageLogs: MileageLog[];
+  reminders?: Reminder[];
 }
 
 export const migrationService = {
@@ -153,6 +154,27 @@ export const migrationService = {
         batchOpCount++;
         migratedCount++;
         await commitBatchIfNeeded();
+      }
+
+      // 6. Migrar recordatorios conservando ID original y vehicleId, forzando targetUserId
+      if (localData.reminders) {
+        for (const r of localData.reminders) {
+          if (!r.id || !r.vehicleId) continue;
+          const remDocRef = doc(db, 'reminders', r.id);
+          const { id, userId, ...rData } = r;
+          currentBatch.set(
+            remDocRef,
+            {
+              ...rData,
+              id: r.id,
+              userId: targetUserId,
+            },
+            { merge: true }
+          );
+          batchOpCount++;
+          migratedCount++;
+          await commitBatchIfNeeded();
+        }
       }
 
       // Confirmar el último batch pendiente

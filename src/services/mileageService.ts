@@ -7,16 +7,18 @@ import {
   where,
   onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { MileageLog } from '../types';
 
 const COLLECTION_NAME = 'mileage';
 
 export const mileageService = {
-  async getMileageLogs(userId: string): Promise<MileageLog[]> {
+  async getMileageLogs(userId?: string): Promise<MileageLog[]> {
     if (!db) return [];
+    const uid = auth?.currentUser?.uid || userId;
+    if (!uid) return [];
     try {
-      const q = query(collection(db, COLLECTION_NAME), where('userId', '==', userId));
+      const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
       const snapshot = await getDocs(q);
       return snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
@@ -28,12 +30,29 @@ export const mileageService = {
     }
   },
 
-  subscribeMileageLogs(userId: string, onUpdate: (items: MileageLog[]) => void) {
+  subscribeMileageLogs(
+    param1: string | ((items: MileageLog[]) => void),
+    param2?: (items: MileageLog[]) => void
+  ) {
+    let onUpdate: (items: MileageLog[]) => void;
+    if (typeof param1 === 'function') {
+      onUpdate = param1;
+    } else if (typeof param2 === 'function') {
+      onUpdate = param2;
+    } else {
+      return () => {};
+    }
+
     if (!db) {
       onUpdate([]);
       return () => {};
     }
-    const q = query(collection(db, COLLECTION_NAME), where('userId', '==', userId));
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      onUpdate([]);
+      return () => {};
+    }
+    const q = query(collection(db, COLLECTION_NAME), where('userId', '==', uid));
     return onSnapshot(
       q,
       (snapshot) => {
@@ -51,9 +70,13 @@ export const mileageService = {
 
   async addMileageLog(log: MileageLog): Promise<void> {
     if (!db) return;
+    const uid = auth?.currentUser?.uid;
+    if (!uid) {
+      throw new Error('Usuario no autenticado.');
+    }
     try {
       const docRef = doc(db, COLLECTION_NAME, log.id);
-      await setDoc(docRef, log);
+      await setDoc(docRef, { ...log, userId: uid });
     } catch (error) {
       console.error('Error adding mileage log to Firestore:', error);
       throw new Error('No se pudo guardar la lectura de kilometraje.');
