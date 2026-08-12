@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -10,7 +11,7 @@ import {
   onSnapshot,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { Vehicle } from '../types';
 
 const COLLECTION_NAME = 'vehicles';
@@ -78,9 +79,30 @@ export const vehicleService = {
     }
   },
 
-  async deleteVehicle(vehicleId: string, userId: string): Promise<void> {
+  async deleteVehicle(vehicleId: string, userIdParam?: string): Promise<void> {
     if (!db) return;
+
+    // Obtener UID directamente del usuario autenticado en Firebase Auth
+    const authenticatedUid = auth?.currentUser?.uid;
+    if (!authenticatedUid) {
+      throw new Error('Usuario no autenticado.');
+    }
+
+    // Si se pasa un parámetro de userId, verificar estrictamente que coincida con el UID autenticado
+    if (userIdParam && userIdParam !== authenticatedUid) {
+      throw new Error('No coinciden las credenciales del usuario autenticado.');
+    }
+
     try {
+      // Verificar que el vehículo exista y pertenezca al usuario autenticado
+      const vehDocRef = doc(db, COLLECTION_NAME, vehicleId);
+      const vehSnap = await getDoc(vehDocRef);
+
+      if (vehSnap.exists() && vehSnap.data().userId !== authenticatedUid) {
+        throw new Error('Acceso no autorizado: El vehículo pertenece a otro usuario.');
+      }
+
+      // Proceso de eliminación en cascada utilizando lotes atómicos (máximo 400 escrituras por batch)
       const batchLimit = 400;
       let currentBatch = writeBatch(db);
       let batchOpCount = 0;
@@ -93,10 +115,10 @@ export const vehicleService = {
         }
       };
 
-      // 1. Queue deletion of related maintenance items
+      // 1. Eliminar mantenimientos relacionados del usuario autenticado
       const maintQ = query(
         collection(db, 'maintenance'),
-        where('userId', '==', userId),
+        where('userId', '==', authenticatedUid),
         where('vehicleId', '==', vehicleId)
       );
       const maintSnap = await getDocs(maintQ);
@@ -106,10 +128,10 @@ export const vehicleService = {
         await commitIfNeeded();
       }
 
-      // 2. Queue deletion of related expenses
+      // 2. Eliminar gastos relacionados del usuario autenticado
       const expQ = query(
         collection(db, 'expenses'),
-        where('userId', '==', userId),
+        where('userId', '==', authenticatedUid),
         where('vehicleId', '==', vehicleId)
       );
       const expSnap = await getDocs(expQ);
@@ -119,10 +141,10 @@ export const vehicleService = {
         await commitIfNeeded();
       }
 
-      // 3. Queue deletion of related documents
+      // 3. Eliminar documentos relacionados del usuario autenticado
       const docQ = query(
         collection(db, 'documents'),
-        where('userId', '==', userId),
+        where('userId', '==', authenticatedUid),
         where('vehicleId', '==', vehicleId)
       );
       const docSnap = await getDocs(docQ);
@@ -132,10 +154,10 @@ export const vehicleService = {
         await commitIfNeeded();
       }
 
-      // 4. Queue deletion of related mileage logs
+      // 4. Eliminar registros de kilometraje relacionados del usuario autenticado
       const mileQ = query(
         collection(db, 'mileage'),
-        where('userId', '==', userId),
+        where('userId', '==', authenticatedUid),
         where('vehicleId', '==', vehicleId)
       );
       const mileSnap = await getDocs(mileQ);
@@ -145,15 +167,30 @@ export const vehicleService = {
         await commitIfNeeded();
       }
 
-      // 5. Delete the vehicle document itself
-      const vehDocRef = doc(db, COLLECTION_NAME, vehicleId);
+      // 5. Eliminar recordatorios relacionados del usuario autenticado
+      const remQ = query(
+        collection(db, 'reminders'),
+        where('userId', '==', authenticatedUid),
+        where('vehicleId', '==', vehicleId)
+      );
+      const remSnap = await getDocs(remQ);
+      for (const dSnap of remSnap.docs) {
+        currentBatch.delete(dSnap.ref);
+        batchOpCount++;
+        await commitIfNeeded();
+      }
+
+      // 6. Eliminar el documento del vehículo propiamente dicho
       currentBatch.delete(vehDocRef);
       batchOpCount++;
 
+      // Confirmar cualquier operación pendiente en el batch final
       await commitIfNeeded(true);
     } catch (error) {
-      console.error('Error deleting vehicle and related items from Firestore:', error);
-      throw new Error('No se pudo eliminar el vehículo y sus registros asociados.');
+      console.error('Error al eliminar vehículo y registros vinculados en Firestore:', error);
+      throw error instanceof Error
+        ? error
+        : new Error('No se pudo eliminar el vehículo y sus registros asociados.');
     }
   },
 };

@@ -44,6 +44,7 @@ import { expenseService } from '../services/expenseService';
 import { documentService } from '../services/documentService';
 import { mileageService } from '../services/mileageService';
 import { migrationService } from '../services/migrationService';
+import { userService } from '../services/userService';
 
 interface AppContextType {
   user: UserProfile | null;
@@ -171,7 +172,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           plan: userPlan,
           createdAt: new Date().toISOString(),
         };
-        setUser(userProfile);
+
+        // Crear o actualizar perfil en users/{firebaseUser.uid}
+        const syncedProfile = await userService.syncUserProfile(userProfile);
+        setUser(syncedProfile || userProfile);
         setIsDemoMode(false);
 
         // Check for local data migration
@@ -184,7 +188,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               parsed.maintenances.length > 0 ||
               parsed.expenses.length > 0
             ) {
-              await migrationService.migrateLocalDataToFirestore(firebaseUser.uid, {
+              await migrationService.migrateLocalDataToFirestore({
                 vehicles: parsed.vehicles,
                 maintenances: parsed.maintenances,
                 expenses: parsed.expenses,
@@ -232,6 +236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setExpenses([]);
           setDocuments([]);
           setMileageLogs([]);
+          setReminders([]);
         }
         setIsAuthReady(true);
       }

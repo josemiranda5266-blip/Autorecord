@@ -22,28 +22,32 @@ export const migrationService = {
   },
 
   async migrateLocalDataToFirestore(
-    userIdParam: string,
     localData: LocalDataToMigrate
   ): Promise<{ success: boolean; migratedCount: number; error?: string }> {
     if (!db) {
       return { success: false, migratedCount: 0, error: 'Firestore no está inicializado.' };
     }
 
-    // Always enforce current authenticated Firebase Auth UID over any LocalStorage string
-    const currentAuthUid = auth?.currentUser?.uid;
-    const targetUserId = currentAuthUid || userIdParam;
+    // La fuente de verdad del ownership es exclusivamente el UID del usuario autenticado en Firebase Auth
+    const targetUserId = auth?.currentUser?.uid;
 
     if (!targetUserId) {
-      return { success: false, migratedCount: 0, error: 'Usuario no autenticado.' };
+      return {
+        success: false,
+        migratedCount: 0,
+        error: 'Usuario no autenticado.',
+      };
     }
 
     if (this.hasBeenMigrated(targetUserId)) {
       return { success: true, migratedCount: 0 };
     }
 
+    // Proceso de migración idempotente con atomicidad por batch (fragmentos de hasta 400 escrituras por batch).
+    // Nota: Cada batch es atómico individualmente; la idempotencia por ID permite reintentar si un batch falla sin duplicar registros.
     try {
       let migratedCount = 0;
-      const batchLimit = 400; // Safe threshold below Firestore 500 limit
+      const batchLimit = 400; // Límite seguro por debajo del máximo de 500 escrituras por batch de Firestore
       let currentBatch = writeBatch(db);
       let batchOpCount = 0;
 
@@ -55,11 +59,11 @@ export const migrationService = {
         }
       };
 
-      // 1. Migrate vehicles using original IDs for idempotency
+      // 1. Migrar vehículos conservando el ID original para idempotencia y forzando targetUserId
       for (const v of localData.vehicles) {
         if (!v.id) continue;
         const vehicleDocRef = doc(db, 'vehicles', v.id);
-        const { id, ...vData } = v;
+        const { id, userId, ...vData } = v;
         currentBatch.set(
           vehicleDocRef,
           {
@@ -75,11 +79,11 @@ export const migrationService = {
         await commitBatchIfNeeded();
       }
 
-      // 2. Migrate maintenances
+      // 2. Migrar mantenimientos conservando ID original y vehicleId, forzando targetUserId
       for (const m of localData.maintenances) {
         if (!m.id || !m.vehicleId) continue;
         const maintDocRef = doc(db, 'maintenance', m.id);
-        const { id, ...mData } = m;
+        const { id, userId, ...mData } = m;
         currentBatch.set(
           maintDocRef,
           {
@@ -94,11 +98,11 @@ export const migrationService = {
         await commitBatchIfNeeded();
       }
 
-      // 3. Migrate expenses
+      // 3. Migrar gastos conservando ID original y vehicleId, forzando targetUserId
       for (const e of localData.expenses) {
         if (!e.id || !e.vehicleId) continue;
         const expDocRef = doc(db, 'expenses', e.id);
-        const { id, ...eData } = e;
+        const { id, userId, ...eData } = e;
         currentBatch.set(
           expDocRef,
           {
@@ -113,11 +117,11 @@ export const migrationService = {
         await commitBatchIfNeeded();
       }
 
-      // 4. Migrate documents
+      // 4. Migrar documentos conservando ID original y vehicleId, forzando targetUserId
       for (const d of localData.documents) {
         if (!d.id || !d.vehicleId) continue;
         const docRef = doc(db, 'documents', d.id);
-        const { id, ...dData } = d;
+        const { id, userId, ...dData } = d;
         currentBatch.set(
           docRef,
           {
@@ -132,11 +136,11 @@ export const migrationService = {
         await commitBatchIfNeeded();
       }
 
-      // 5. Migrate mileage logs
+      // 5. Migrar registros de kilometraje conservando ID original y vehicleId, forzando targetUserId
       for (const ml of localData.mileageLogs) {
         if (!ml.id || !ml.vehicleId) continue;
         const logDocRef = doc(db, 'mileage', ml.id);
-        const { id, ...mlData } = ml;
+        const { id, userId, ...mlData } = ml;
         currentBatch.set(
           logDocRef,
           {
@@ -151,17 +155,19 @@ export const migrationService = {
         await commitBatchIfNeeded();
       }
 
-      // Commit any remaining operations
+      // Confirmar el último batch pendiente
       await commitBatchIfNeeded(true);
 
+      // Si todos los batches fueron confirmados con éxito, marcar como migrado
       this.markAsMigrated(targetUserId);
       return { success: true, migratedCount };
     } catch (err: unknown) {
-      console.error('Error durante la migración atómica a Firestore:', err);
+      console.error('Error durante la migración por batches a Firestore:', err);
+      // No se marca como migrado para permitir que una ejecución subsiguiente complete los batches restantes idempotentemente
       return {
         success: false,
         migratedCount: 0,
-        error: err instanceof Error ? err.message : 'Error durante la migración.',
+        error: err instanceof Error ? err.message : 'Error durante la migración por batches.',
       };
     }
   },
