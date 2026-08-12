@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check authentication
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to verify user ownership of document
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users profile collection
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Vehicles collection
+    match /vehicles/{vehicleId} {
+      allow read, create, update, delete: if isSignedIn() && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+
+    // Maintenance collection
+    match /maintenance/{maintenanceId} {
+      allow read, create, update, delete: if isSignedIn() && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+
+    // Expenses collection
+    match /expenses/{expenseId} {
+      allow read, create, update, delete: if isSignedIn() && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+
+    // Documents collection
+    match /documents/{documentId} {
+      allow read, create, update, delete: if isSignedIn() && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+
+    // Mileage logs collection
+    match /mileageLogs/{mileageLogId} {
+      allow read, create, update, delete: if isSignedIn() && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+
+    // Reminders collection
+    match /reminders/{reminderId} {
+      allow read, create, update, delete: if isSignedIn() && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+  }
+}

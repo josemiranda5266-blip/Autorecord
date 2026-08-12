@@ -1,0 +1,161 @@
+{
+  "entities": {
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "User automobile record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "brand": { "type": "string", "maxLength": 100 },
+        "model": { "type": "string", "maxLength": 100 },
+        "version": { "type": "string", "maxLength": 100 },
+        "year": { "type": "number" },
+        "engine": { "type": "string", "maxLength": 100 },
+        "fuelType": { "type": "string", "maxLength": 50 },
+        "licensePlate": { "type": "string", "maxLength": 20 },
+        "currentMileage": { "type": "number" },
+        "acquisitionDate": { "type": "string" },
+        "photoUrl": { "type": "string", "maxLength": 1000 },
+        "isMain": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "brand", "model", "year", "currentMileage"]
+    },
+    "MaintenanceItem": {
+      "title": "MaintenanceItem",
+      "description": "Maintenance record or pending task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "type": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string" },
+        "mileage": { "type": "number" },
+        "cost": { "type": "number" },
+        "workshop": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "receiptUrl": { "type": "string", "maxLength": 1000 },
+        "nextMileageDue": { "type": "number" },
+        "nextDateDue": { "type": "string" },
+        "isCompleted": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "vehicleId", "type", "date", "mileage"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Vehicle expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "date": { "type": "string" },
+        "category": { "type": "string", "maxLength": 100 },
+        "amount": { "type": "number" },
+        "mileage": { "type": "number" },
+        "description": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "vehicleId", "date", "category", "amount"]
+    },
+    "DocumentRecord": {
+      "title": "DocumentRecord",
+      "description": "Vehicle legal/insurance document with expiration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "type": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "expirationDate": { "type": "string" },
+        "observations": { "type": "string", "maxLength": 1000 },
+        "fileUrl": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "vehicleId", "type", "title", "expirationDate"]
+    },
+    "MileageLog": {
+      "title": "MileageLog",
+      "description": "Odometer update history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "mileage": { "type": "number" },
+        "date": { "type": "string" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "vehicleId", "mileage", "date"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Notification reminder for date or mileage",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 500 },
+        "dueMileage": { "type": "number" },
+        "dueDate": { "type": "string" },
+        "type": { "type": "string", "maxLength": 50 },
+        "maintenanceType": { "type": "string", "maxLength": 100 },
+        "isDismissed": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "vehicleId", "title"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile preferences and subscription plan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 200 },
+        "plan": { "type": "string", "enum": ["free", "premium"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "plan"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile metadata"
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": { "$ref": "#/entities/Vehicle" },
+      "description": "User vehicles collection"
+    },
+    "/maintenance/{maintenanceId}": {
+      "schema": { "$ref": "#/entities/MaintenanceItem" },
+      "description": "Vehicle maintenance items"
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Vehicle expenses"
+    },
+    "/documents/{documentId}": {
+      "schema": { "$ref": "#/entities/DocumentRecord" },
+      "description": "Vehicle documents"
+    },
+    "/mileageLogs/{mileageLogId}": {
+      "schema": { "$ref": "#/entities/MileageLog" },
+      "description": "Vehicle odometer logs"
+    },
+    "/reminders/{reminderId}": {
+      "schema": { "$ref": "#/entities/Reminder" },
+      "description": "Vehicle reminders"
+    }
+  }
+}

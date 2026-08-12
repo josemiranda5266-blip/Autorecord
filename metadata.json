@@ -1,0 +1,6 @@
+{
+  "name": "AutoRecord",
+  "description": "Asistente inteligente de mantenimiento y cuidado del automóvil. Llevá el control de tus vehículos, mantenimientos, gastos y vencimientos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
